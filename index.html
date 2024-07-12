@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solari-MAP-for-PV-station</title>
-    <script src="https://webapi.amap.com/maps?v=2.0&key=c7c6678a7f213604f0ace81b7dfdf94f"></script>
+    <title>使用高德地图API和ECharts展示城市数据</title>
+    <script src="https://webapi.amap.com/maps?v=2.0&key=dd33acd236ff9c0b908f6cd46e9c4429"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
     <style>
         #map { height: 500px; }
@@ -46,8 +46,12 @@
 
             // 异步加载城市数据
             fetch('data.csv')
-                .then(response => response.text())
+                .then(response => {
+                    console.log('CSV文件加载成功');
+                    return response.text();
+                })
                 .then(data => {
+                    console.log('CSV数据:', data);
                     processData(data); // 处理读取到的数据
                 })
                 .catch(error => console.error('加载CSV数据时出错:', error));
@@ -64,6 +68,7 @@
                 var utilizationHours = parseFloat(values[2]);
                 cityData[city] = { "totalRadiation": totalRadiation, "utilizationHours": utilizationHours };
             }
+            console.log('城市数据:', cityData);
 
             // 在地图上标记城市并绑定数据
             for (var city in cityData) {
