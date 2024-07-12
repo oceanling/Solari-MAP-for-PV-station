@@ -1,46 +1,146 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <title>Interactive Solar Data Map</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <!-- Highcharts CSS -->
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/map.js"></script>
+    <script src="https://code.highcharts.com/modules/data.js"></script>
+    <script src="https://code.highcharts.com/modules/bubble.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+
+    <!-- D3.js for CSV parsing -->
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+
     <style>
         #map { height: 600px; }
+        #chart { min-width: 310px; height: 400px; margin: 0 auto; }
     </style>
 </head>
 <body>
     <h1>Interactive Solar Data Map</h1>
     <div id="map"></div>
+    <div id="chart"></div>
+
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://d3js.org/d3.v5.min.js"></script>
     <script>
         // Initialize the map
-        var map = L.map('map').setView([30.67, 104.06], 5); // Centered on Sichuan, China
+        var map = L.map('map').setView([34.5, 106.5], 5);
 
-        // Add OpenStreetMap tiles
+        // Use OpenStreetMap tiles
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            maxZoom: 18,
         }).addTo(map);
+
+        // Function to get location from Amap
+        function getLocation(city) {
+            const AMAP_API_KEY = 'c7c6678a7f213604f0ace81b7dfdf94f';
+            return fetch(`https://restapi.amap.com/v3/geocode/geo?address=${city}&key=${AMAP_API_KEY}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.geocodes && data.geocodes.length > 0) {
+                        return data.geocodes[0];
+                    } else {
+                        throw new Error('No geocode result found');
+                    }
+                });
+        }
 
         // Load CSV data
         d3.csv('data.csv').then(function(data) {
-            data.forEach(function(d) {
-                // Fetch coordinates using Nominatim API
-                fetch(`https://nominatim.openstreetmap.org/search?city=${d.city}&format=json&limit=1`)
-                    .then(response => response.json())
-                    .then(location => {
-                        if (location.length > 0) {
-                            var lat = location[0].lat;
-                            var lon = location[0].lon;
-                            var marker = L.marker([lat, lon]).addTo(map);
-                            marker.bindPopup('<b>' + d.city + '</b><br>利用小时: ' + d.utilization_hours)
-                                  .on('click', function() {
-                                      this.setPopupContent('<b>' + d.city + '</b><br>总辐射值: ' + d.total_radiation);
-                                  });
-                        }
+            var markerData = [];
+            var seriesData = [];
+
+            var promises = data.map(function(d) {
+                var city = d.city;
+                if (!city) {
+                    return Promise.resolve(); // Skip if city is not defined
+                }
+                return getLocation(city).then(location => {
+                    var lat = parseFloat(location.location.split(',')[1]);
+                    var lon = parseFloat(location.location.split(',')[0]);
+                    var utilization_hours = +d.utilization_hours;
+                    var total_radiation = +d.total_radiation;
+
+                    // Add to marker data for Leaflet
+                    markerData.push({
+                        name: d.city,
+                        lat: lat,
+                        lon: lon,
+                        utilization_hours: utilization_hours,
+                        total_radiation: total_radiation
                     });
+
+                    // Add to series data for Highcharts
+                    seriesData.push({
+                        x: lon,
+                        y: lat,
+                        z: utilization_hours,
+                        name: d.city,
+                        total_radiation: total_radiation
+                    });
+                }).catch(function(error) {
+                    console.error(`Error fetching location for city ${city}:`, error);
+                });
             });
+
+            Promise.all(promises).then(function() {
+                // Add markers to Leaflet map
+                markerData.forEach(function(city) {
+                    var marker = L.marker([city.lat, city.lon]).addTo(map);
+                    marker.bindPopup(`<b>${city.name}</b><br>Utilization Hours: ${city.utilization_hours}`);
+                });
+
+                // Create Highcharts chart
+                Highcharts.chart('chart', {
+                    chart: {
+                        type: 'bubble',
+                        plotBorderWidth: 1,
+                        zoomType: 'xy'
+                    },
+                    legend: {
+                        enabled: false
+                    },
+                    title: {
+                        text: 'Solar Data'
+                    },
+                    xAxis: {
+                        gridLineWidth: 1,
+                        title: {
+                            text: 'Longitude'
+                        }
+                    },
+                    yAxis: {
+                        startOnTick: false,
+                        endOnTick: false,
+                        title: {
+                            text: 'Latitude'
+                        }
+                    },
+                    tooltip: {
+                        useHTML: true,
+                        headerFormat: '<table>',
+                        pointFormat: '<tr><th>City:</th><td>{point.name}</td></tr>' +
+                                     '<tr><th>Utilization Hours:</th><td>{point.z}</td></tr>' +
+                                     '<tr><th>Total Radiation:</th><td>{point.total_radiation}</td></tr>',
+                        footerFormat: '</table>',
+                        followPointer: true
+                    },
+                    series: [{
+                        data: seriesData,
+                        marker: {
+                            fillOpacity: 0.5,
+                            lineWidth: 1
+                        }
+                    }]
+                });
+            });
+        }).catch(function(error) {
+            console.error('Error loading or processing data:', error);
         });
     </script>
 </body>
