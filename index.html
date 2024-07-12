@@ -31,12 +31,9 @@
     <div id="chart"></div>
 
     <script>
-        var map = L.map('map').setView([34.3416, 108.9402], 4); // 设置初始视图
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-        }).addTo(map);
-
-        var cityData = {}; // 存储城市数据
+        var map = L.map('map').setView([35.8617, 104.1954], 4); // 设置初始视图为中国
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+        var cityData = {};
 
         function getCityCoords(city, callback) {
             var geocoder = new AMap.Geocoder();
@@ -50,27 +47,21 @@
             });
         }
 
-        // 加载CSV数据
         fetch('data.csv')
             .then(response => response.text())
             .then(data => {
                 var lines = data.split('\n');
                 for (var i = 1; i < lines.length; i++) {
-                    if(lines[i].trim() === "") continue; // 跳过空行
+                    if (lines[i].trim() === "") continue;
                     var parts = lines[i].split(',');
                     var city = parts[0];
                     var totalRadiation = parts[1];
                     var utilizationHours = parts[2];
-                    cityData[city] = {
-                        totalRadiation: totalRadiation,
-                        utilizationHours: utilizationHours
-                    };
+                    cityData[city] = { totalRadiation: totalRadiation, utilizationHours: utilizationHours };
                     getCityCoords(city, function(lng, lat) {
                         var marker = L.marker([lat, lng]).addTo(map);
                         marker.bindPopup(`<b>${city}</b><br>总辐射量: ${totalRadiation} kWh/m²<br>利用小时: ${utilizationHours}`);
-                        marker.on('click', function() {
-                            showChart(city);
-                        });
+                        marker.on('click', function() { showChart(city); });
                     });
                 }
             })
@@ -79,28 +70,12 @@
         function showChart(city) {
             var data = cityData[city];
             Highcharts.chart('chart', {
-                chart: {
-                    type: 'column'
-                },
-                title: {
-                    text: `城市: ${city}`
-                },
-                xAxis: {
-                    categories: ['总辐射量', '利用小时']
-                },
-                yAxis: {
-                    min: 0,
-                    title: {
-                        text: '值'
-                    }
-                },
-                series: [{
-                    name: city,
-                    data: [parseFloat(data.totalRadiation), parseFloat(data.utilizationHours)]
-                }],
-                accessibility: {
-                    enabled: false
-                }
+                chart: { type: 'column' },
+                title: { text: `城市: ${city}` },
+                xAxis: { categories: ['总辐射量', '利用小时'] },
+                yAxis: { min: 0, title: { text: '值' } },
+                series: [{ name: city, data: [parseFloat(data.totalRadiation), parseFloat(data.utilizationHours)] }],
+                accessibility: { enabled: false }
             });
         }
 
@@ -112,7 +87,16 @@
                     showChart(city);
                 });
             } else {
-                alert('城市不存在！');
+                var geocoder = new AMap.Geocoder();
+                geocoder.getLocation(city, function(status, result) {
+                    if (status === 'complete' && result.geocodes.length) {
+                        var location = result.geocodes[0].location;
+                        map.setView([location.lat, location.lng], 6);
+                        alert('城市不存在数据，但已定位至该城市所在省份。');
+                    } else {
+                        alert('城市不存在！');
+                    }
+                });
             }
         }
     </script>
