@@ -3,67 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>可视化地图</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://code.highcharts.com/highcharts.js"></script>
-    <script src="https://webapi.amap.com/maps?v=1.4.15&key=c7c6678a7f213604f0ace81b7dfdf94f"></script>
+    <title>使用高德地图API和ECharts展示城市数据</title>
+    <script src="https://webapi.amap.com/maps?v=1.4.15&key=你的高德API密钥"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
     <style>
-        #map { height: 90vh; }
-        #chart { height: 50vh; }
-        #search-box {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 1000;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-        }
+        #map { height: 500px; }
+        #chart { height: 400px; }
     </style>
 </head>
 <body>
-    <div id="search-box">
-        <input type="text" id="search" placeholder="搜索城市">
-        <button onclick="searchCity()">搜索</button>
-    </div>
     <div id="map"></div>
     <div id="chart"></div>
 
     <script>
-        var map = L.map('map').setView([35.8617, 104.1954], 4); // 设置初始视图为中国
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+        var map;
+        var cityData = {};
 
-        var cityData = {}; // 声明一个空对象存放城市数据
+        // 初始化地图
+        function initMap() {
+            map = new AMap.Map('map', {
+                center: [104.1954, 35.8617], // 设置地图中心点为中国
+                zoom: 4 // 初始缩放级别
+            });
 
-        // 从 data.csv 文件中读取城市数据
-        fetch('data.csv')
-            .then(response => response.text())
-            .then(data => {
-                processData(data); // 处理读取到的数据
-            })
-            .catch(error => console.error('加载CSV数据时出错:', error));
+            // 异步加载城市数据
+            fetch('data.csv')
+                .then(response => response.text())
+                .then(data => {
+                    processData(data); // 处理读取到的数据
+                })
+                .catch(error => console.error('加载CSV数据时出错:', error));
+        }
 
+        // 处理城市数据
         function processData(data) {
             var lines = data.trim().split('\n');
             var headers = lines[0].split(',');
             for (var i = 1; i < lines.length; i++) {
                 var values = lines[i].split(',');
                 var city = values[0];
-                var totalRadiation = values[1];
-                var utilizationHours = values[2];
+                var totalRadiation = parseFloat(values[1]);
+                var utilizationHours = parseFloat(values[2]);
                 cityData[city] = { "totalRadiation": totalRadiation, "utilizationHours": utilizationHours };
             }
 
             // 在地图上标记城市并绑定数据
             for (var city in cityData) {
                 (function(city) {
-                    getCityCoords(city, function(lng, lat) {
-                        if (lng !== null && lat !== null) {
-                            var marker = L.marker([lat, lng]).addTo(map);
-                            marker.bindPopup(`<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation} kWh/m²<br>利用小时: ${cityData[city].utilizationHours}`);
-                            marker.on('click', function() { showChart(city); });
-                            cityData[city].coords = [lat, lng];
+                    var geocoder = new AMap.Geocoder();
+                    geocoder.getLocation(city, function(status, result) {
+                        if (status === 'complete' && result.geocodes.length) {
+                            var lnglat = result.geocodes[0].location;
+                            var marker = new AMap.Marker({
+                                position: lnglat,
+                                map: map
+                            });
+                            var infoWindow = new AMap.InfoWindow({
+                                content: `<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation.toFixed(2)} kWh/m²<br>利用小时: ${cityData[city].utilizationHours.toFixed(2)}`
+                            });
+                            marker.on('click', function() {
+                                infoWindow.open(map, marker.getPosition());
+                                showChart(city);
+                            });
                         } else {
                             console.warn('无法获取有效的坐标信息:', city);
                         }
@@ -72,53 +73,27 @@
             }
         }
 
-        function getCityCoords(city, callback) {
-            AMap.plugin('AMap.Geocoder', function() {
-                var geocoder = new AMap.Geocoder({
-                    city: "010", // 城市设为北京，具体可以根据需要设置
-                    radius: 5000 // 增大搜索半径，单位为米
-                });
-                geocoder.getLocation(city, function(status, result) {
-                    if (status === 'complete' && result.geocodes.length) {
-                        var location = result.geocodes[0].location;
-                        callback(location.lng, location.lat);
-                    } else {
-                        console.error('获取城市坐标失败:', city, '状态:', status, '结果:', result);
-                        callback(null); // 调用回调函数，传入null表示获取失败
-                    }
-                });
-            });
-        }
-
+        // 使用ECharts展示城市数据的图表
         function showChart(city) {
             var data = cityData[city];
-            Highcharts.chart('chart', {
-                chart: { type: 'column' },
+            var chart = echarts.init(document.getElementById('chart'));
+            var option = {
                 title: { text: `城市: ${city}` },
-                xAxis: { categories: ['总辐射量', '利用小时'] },
-                yAxis: { min: 0, title: { text: '值' } },
-                series: [{ name: city, data: [parseFloat(data.totalRadiation), parseFloat(data.utilizationHours)] }],
-                accessibility: { enabled: false }
-            });
+                tooltip: {},
+                xAxis: { data: ['总辐射量', '利用小时'] },
+                yAxis: {},
+                series: [{
+                    type: 'bar',
+                    data: [data.totalRadiation, data.utilizationHours]
+                }]
+            };
+            chart.setOption(option);
         }
 
-        function searchCity() {
-            var city = document.getElementById('search').value;
-            if (cityData[city]) {
-                var coords = cityData[city].coords;
-                map.setView(coords, 10); // 缩放至城市位置
-                showChart(city);
-            } else {
-                getCityCoords(city, function(lng, lat) {
-                    if (lng !== null && lat !== null) {
-                        map.setView([lat, lng], 10); // 缩放至城市位置
-                        alert('城市不存在数据，但已定位至该城市所在位置。');
-                    } else {
-                        alert('无法定位到该城市！');
-                    }
-                });
-            }
-        }
+        // 页面加载完成后初始化地图
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+        });
     </script>
 </body>
 </html>
