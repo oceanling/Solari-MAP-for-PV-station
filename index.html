@@ -1,81 +1,115 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>Solar Map for PV Station</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://code.highcharts.com/maps/highmaps.js"></script>
-    <script src="https://code.highcharts.com/maps/modules/exporting.js"></script>
-    <script src="https://code.highcharts.com/maps/modules/offline-exporting.js"></script>
-    <script src="https://code.highcharts.com/maps/modules/map.js"></script>
-    <script src="https://code.highcharts.com/mapdata/custom/world.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可视化地图</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://webapi.amap.com/maps?v=1.4.15&key=你的高德API密钥"></script>
+    <style>
+        #map { height: 90vh; }
+        #chart { height: 50vh; }
+        #search-box {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
-    <div id="container" style="width: 100%; height: 600px;"></div>
-    <script>
-        // 读取 CSV 文件并处理数据
-        $.get('data.csv', function(data) {
-            const lines = data.split('\n');
-            const csvData = [];
+    <div id="search-box">
+        <input type="text" id="search" placeholder="搜索城市">
+        <button onclick="searchCity()">搜索</button>
+    </div>
+    <div id="map"></div>
+    <div id="chart"></div>
 
-            // 解析 CSV 文件
-            lines.forEach(line => {
-                const [city, total_radiation, utilization_hours] = line.split(',');
-                csvData.push({ city, total_radiation: parseFloat(total_radiation), utilization_hours: parseFloat(utilization_hours) });
+    <script>
+        var map = L.map('map').setView([34.3416, 108.9402], 4); // 设置初始视图
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+        }).addTo(map);
+
+        var cityData = {}; // 存储城市数据
+
+        function getCityCoords(city, callback) {
+            var geocoder = new AMap.Geocoder();
+            geocoder.getLocation(city, function(status, result) {
+                if (status === 'complete' && result.geocodes.length) {
+                    var location = result.geocodes[0].location;
+                    callback(location.lng, location.lat);
+                } else {
+                    console.error('获取城市坐标失败:', city);
+                }
+            });
+        }
+
+        // 加载CSV数据
+        fetch('data.csv')
+            .then(response => response.text())
+            .then(data => {
+                var lines = data.split('\n');
+                for (var i = 1; i < lines.length; i++) {
+                    var parts = lines[i].split(',');
+                    var city = parts[0];
+                    var totalRadiation = parts[1];
+                    var utilizationHours = parts[2];
+                    cityData[city] = {
+                        totalRadiation: totalRadiation,
+                        utilizationHours: utilizationHours
+                    };
+                    getCityCoords(city, function(lng, lat) {
+                        var marker = L.marker([lat, lng]).addTo(map);
+                        marker.bindPopup(`<b>${city}</b><br>总辐射量: ${totalRadiation} kWh/m²<br>利用小时: ${utilizationHours}`);
+                        marker.on('click', function() {
+                            showChart(city);
+                        });
+                    });
+                }
             });
 
-            // 定义城市坐标数据（使用一些示例数据，需要根据实际情况更新）
-            const cityCoordinates = {
-                '日喀则': [88.880583, 29.267634],
-                '阿里': [80.105498, 32.501111],
-                '拉萨': [91.117212, 29.646923]
-            };
-
-            // 准备地图数据
-            const mapData = csvData.map(item => {
-                const coordinates = cityCoordinates[item.city];
-                if (coordinates) {
-                    return {
-                        name: item.city,
-                        lat: coordinates[1],
-                        lon: coordinates[0],
-                        utilization_hours: item.utilization_hours
-                    };
-                }
-            }).filter(item => item);
-
-            // 初始化地图
-            Highcharts.mapChart('container', {
+        function showChart(city) {
+            var data = cityData[city];
+            Highcharts.chart('chart', {
                 chart: {
-                    map: 'custom/world'
+                    type: 'column'
                 },
                 title: {
-                    text: 'Solar Utilization Hours in Various Cities'
+                    text: `城市: ${city}`
                 },
-                mapNavigation: {
-                    enabled: true,
-                    enableDoubleClickZoomTo: true
+                xAxis: {
+                    categories: ['总辐射量', '利用小时']
                 },
-                tooltip: {
-                    pointFormat: '{point.name}: {point.utilization_hours} hours'
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: '值'
+                    }
                 },
                 series: [{
-                    name: 'Basemap',
-                    mapData: Highcharts.maps['custom/world'],
-                    borderColor: '#A0A0A0',
-                    nullColor: 'rgba(200, 200, 200, 0.3)',
-                    showInLegend: false
-                }, {
-                    type: 'mappoint',
-                    name: 'Cities',
-                    dataLabels: {
-                        enabled: true,
-                        format: '{point.name}'
-                    },
-                    data: mapData
+                    name: city,
+                    data: [parseFloat(data.totalRadiation), parseFloat(data.utilizationHours)]
                 }]
             });
-        });
+        }
+
+        function searchCity() {
+            var city = document.getElementById('search').value;
+            if (cityData[city]) {
+                getCityCoords(city, function(lng, lat) {
+                    map.setView([lat, lng], 10);
+                    showChart(city);
+                });
+            } else {
+                alert('城市不存在！');
+            }
+        }
     </script>
 </body>
 </html>
