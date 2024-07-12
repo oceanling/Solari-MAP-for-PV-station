@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://code.highcharts.com/highcharts.js"></script>
-    <script src="https://webapi.amap.com/maps?v=1.4.15&key=你的高德API密钥"></script>
+    <script src="https://webapi.amap.com/maps?v=1.4.15&key=c7c6678a7f213604f0ace81b7dfdf94f"></script>
     <style>
         #map { height: 90vh; }
         #chart { height: 50vh; }
@@ -56,6 +56,7 @@
             .then(data => {
                 var lines = data.split('\n');
                 for (var i = 1; i < lines.length; i++) {
+                    if(lines[i].trim() === "") continue; // 跳过空行
                     var parts = lines[i].split(',');
                     var city = parts[0];
                     var totalRadiation = parts[1];
@@ -72,7 +73,8 @@
                         });
                     });
                 }
-            });
+            })
+            .catch(error => console.error('加载CSV数据时出错:', error));
 
         function showChart(city) {
             var data = cityData[city];
@@ -95,7 +97,10 @@
                 series: [{
                     name: city,
                     data: [parseFloat(data.totalRadiation), parseFloat(data.utilizationHours)]
-                }]
+                }],
+                accessibility: {
+                    enabled: false
+                }
             });
         }
 
