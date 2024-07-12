@@ -33,7 +33,10 @@
     <script>
         var map = L.map('map').setView([35.8617, 104.1954], 4); // 设置初始视图为中国
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
-        var cityData = {};
+        var cityData = {
+            "日喀则": { "totalRadiation": "2413", "utilizationHours": "1939" },
+            // 在此添加更多城市数据
+        };
 
         function getCityCoords(city, callback) {
             var geocoder = new AMap.Geocoder();
@@ -47,25 +50,16 @@
             });
         }
 
-        fetch('data.csv')
-            .then(response => response.text())
-            .then(data => {
-                var lines = data.split('\n');
-                for (var i = 1; i < lines.length; i++) {
-                    if (lines[i].trim() === "") continue;
-                    var parts = lines[i].split(',');
-                    var city = parts[0];
-                    var totalRadiation = parts[1];
-                    var utilizationHours = parts[2];
-                    cityData[city] = { totalRadiation: totalRadiation, utilizationHours: utilizationHours };
-                    getCityCoords(city, function(lng, lat) {
-                        var marker = L.marker([lat, lng]).addTo(map);
-                        marker.bindPopup(`<b>${city}</b><br>总辐射量: ${totalRadiation} kWh/m²<br>利用小时: ${utilizationHours}`);
-                        marker.on('click', function() { showChart(city); });
-                    });
-                }
-            })
-            .catch(error => console.error('加载CSV数据时出错:', error));
+        for (var city in cityData) {
+            (function(city) {
+                getCityCoords(city, function(lng, lat) {
+                    var marker = L.marker([lat, lng]).addTo(map);
+                    marker.bindPopup(`<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation} kWh/m²<br>利用小时: ${cityData[city].utilizationHours}`);
+                    marker.on('click', function() { showChart(city); });
+                    cityData[city].coords = [lat, lng];
+                });
+            })(city);
+        }
 
         function showChart(city) {
             var data = cityData[city];
@@ -82,10 +76,9 @@
         function searchCity() {
             var city = document.getElementById('search').value;
             if (cityData[city]) {
-                getCityCoords(city, function(lng, lat) {
-                    map.setView([lat, lng], 10);
-                    showChart(city);
-                });
+                var coords = cityData[city].coords;
+                map.setView(coords, 10); // 缩放至城市位置
+                showChart(city);
             } else {
                 var geocoder = new AMap.Geocoder();
                 geocoder.getLocation(city, function(status, result) {
