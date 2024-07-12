@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>1</title>
+    <title>高德地图API和ECharts展示城市数据</title>
     <script src="https://webapi.amap.com/maps?v=2.0&key=dd33acd236ff9c0b908f6cd46e9c4429"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
     <style>
@@ -46,12 +46,8 @@
 
             // 异步加载城市数据
             fetch('data.csv')
-                .then(response => {
-                    console.log('CSV文件加载成功');
-                    return response.text();
-                })
+                .then(response => response.text())
                 .then(data => {
-                    console.log('CSV数据:', data);
                     processData(data); // 处理读取到的数据
                 })
                 .catch(error => console.error('加载CSV数据时出错:', error));
@@ -68,34 +64,50 @@
                 var utilizationHours = parseFloat(values[2]);
                 cityData[city] = { "totalRadiation": totalRadiation, "utilizationHours": utilizationHours };
             }
-            console.log('城市数据:', cityData);
 
             // 在地图上标记城市并绑定数据
             for (var city in cityData) {
                 (function(city) {
-                    AMap.plugin('AMap.Geocoder', function() {
-                        var geocoder = new AMap.Geocoder();
-                        geocoder.getLocation(city, function(status, result) {
-                            if (status === 'complete' && result.geocodes.length) {
-                                var lnglat = result.geocodes[0].location;
-                                var marker = new AMap.Marker({
-                                    position: lnglat,
-                                    map: map
-                                });
-                                var infoWindow = new AMap.InfoWindow({
-                                    content: `<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation.toFixed(2)} kWh/m²<br>利用小时: ${cityData[city].utilizationHours.toFixed(2)}`
-                                });
-                                marker.on('click', function() {
-                                    infoWindow.open(map, marker.getPosition());
-                                    showChart(city);
-                                });
-                            } else {
-                                console.warn('无法获取有效的坐标信息:', city);
-                            }
-                        });
+                    getCityCoords(city, function(coords) {
+                        if (coords) {
+                            var marker = new AMap.Marker({
+                                position: coords,
+                                map: map
+                            });
+                            var infoWindow = new AMap.InfoWindow({
+                                content: `<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation.toFixed(2)} kWh/m²<br>利用小时: ${cityData[city].utilizationHours.toFixed(2)}`
+                            });
+                            marker.on('click', function() {
+                                infoWindow.open(map, marker.getPosition());
+                                showChart(city);
+                            });
+                        } else {
+                            console.warn('无法获取有效的坐标信息:', city);
+                        }
                     });
                 })(city);
             }
+        }
+
+        // 获取城市坐标
+        function getCityCoords(city, callback) {
+            var url = `https://restapi.amap.com/v3/geocode/geo?address=${city}&key=你的新高德API密钥`;
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === '1' && data.geocodes.length > 0) {
+                        var location = data.geocodes[0].location.split(',');
+                        var coords = [parseFloat(location[0]), parseFloat(location[1])];
+                        callback(coords);
+                    } else {
+                        console.warn('获取城市坐标失败:', city);
+                        callback(null);
+                    }
+                })
+                .catch(error => {
+                    console.error('获取城市坐标时出错:', error);
+                    callback(null);
+                });
         }
 
         // 使用ECharts展示城市数据的图表
@@ -119,17 +131,13 @@
         function searchCity() {
             var city = document.getElementById('search-input').value.trim();
             if (city in cityData) {
-                AMap.plugin('AMap.Geocoder', function() {
-                    var geocoder = new AMap.Geocoder();
-                    geocoder.getLocation(city, function(status, result) {
-                        if (status === 'complete' && result.geocodes.length) {
-                            var lnglat = result.geocodes[0].location;
-                            map.setZoomAndCenter(10, lnglat);
-                            showChart(city);
-                        } else {
-                            console.warn('无法获取有效的坐标信息:', city);
-                        }
-                    });
+                getCityCoords(city, function(coords) {
+                    if (coords) {
+                        map.setZoomAndCenter(10, coords);
+                        showChart(city);
+                    } else {
+                        console.warn('无法获取有效的坐标信息:', city);
+                    }
                 });
             } else {
                 console.warn('城市不在数据中:', city);
