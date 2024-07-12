@@ -3,15 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>使用高德地图API和ECharts展示城市数据</title>
-    <script src="https://webapi.amap.com/maps?v=1.4.15&key=你的高德API密钥"></script>
+    <title>Solari-MAP-for-PV-station</title>
+    <script src="https://webapi.amap.com/maps?v=2.0&key=c7c6678a7f213604f0ace81b7dfdf94f"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
     <style>
         #map { height: 500px; }
         #chart { height: 400px; }
+        #search-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        #search-input {
+            width: 200px;
+            padding: 5px;
+        }
     </style>
 </head>
 <body>
+    <div id="search-container">
+        <input type="text" id="search-input" placeholder="输入城市名称">
+        <button onclick="searchCity()">搜索</button>
+    </div>
     <div id="map"></div>
     <div id="chart"></div>
 
@@ -50,24 +68,26 @@
             // 在地图上标记城市并绑定数据
             for (var city in cityData) {
                 (function(city) {
-                    var geocoder = new AMap.Geocoder();
-                    geocoder.getLocation(city, function(status, result) {
-                        if (status === 'complete' && result.geocodes.length) {
-                            var lnglat = result.geocodes[0].location;
-                            var marker = new AMap.Marker({
-                                position: lnglat,
-                                map: map
-                            });
-                            var infoWindow = new AMap.InfoWindow({
-                                content: `<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation.toFixed(2)} kWh/m²<br>利用小时: ${cityData[city].utilizationHours.toFixed(2)}`
-                            });
-                            marker.on('click', function() {
-                                infoWindow.open(map, marker.getPosition());
-                                showChart(city);
-                            });
-                        } else {
-                            console.warn('无法获取有效的坐标信息:', city);
-                        }
+                    AMap.plugin('AMap.Geocoder', function() {
+                        var geocoder = new AMap.Geocoder();
+                        geocoder.getLocation(city, function(status, result) {
+                            if (status === 'complete' && result.geocodes.length) {
+                                var lnglat = result.geocodes[0].location;
+                                var marker = new AMap.Marker({
+                                    position: lnglat,
+                                    map: map
+                                });
+                                var infoWindow = new AMap.InfoWindow({
+                                    content: `<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation.toFixed(2)} kWh/m²<br>利用小时: ${cityData[city].utilizationHours.toFixed(2)}`
+                                });
+                                marker.on('click', function() {
+                                    infoWindow.open(map, marker.getPosition());
+                                    showChart(city);
+                                });
+                            } else {
+                                console.warn('无法获取有效的坐标信息:', city);
+                            }
+                        });
                     });
                 })(city);
             }
@@ -88,6 +108,27 @@
                 }]
             };
             chart.setOption(option);
+        }
+
+        // 搜索城市
+        function searchCity() {
+            var city = document.getElementById('search-input').value.trim();
+            if (city in cityData) {
+                AMap.plugin('AMap.Geocoder', function() {
+                    var geocoder = new AMap.Geocoder();
+                    geocoder.getLocation(city, function(status, result) {
+                        if (status === 'complete' && result.geocodes.length) {
+                            var lnglat = result.geocodes[0].location;
+                            map.setZoomAndCenter(10, lnglat);
+                            showChart(city);
+                        } else {
+                            console.warn('无法获取有效的坐标信息:', city);
+                        }
+                    });
+                });
+            } else {
+                console.warn('城市不在数据中:', city);
+            }
         }
 
         // 页面加载完成后初始化地图
