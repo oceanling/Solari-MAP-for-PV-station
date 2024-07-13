@@ -1,107 +1,241 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Interactive Map2.0</title>
-    <script src="https://cdn.staticfile.org/echarts/5.4.0/echarts.min.js"></script>
-    <script src="https://cdn.staticfile.org/jquery/3.6.0/jquery.min.js"></script>
+    <title>交互地图</title>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #search-box { position: absolute; top: 10px; right: 10px; background-color: rgba(255, 255, 255, 0.8); padding: 5px; }
+        #search-input { width: 200px; }
+        #legend { position: absolute; bottom: 10px; right: 10px; background-color: rgba(255, 255, 255, 0.8); padding: 10px; }
+        #back-button { position: absolute; top: 10px; left: 10px; background-color: rgba(255, 255, 255, 0.8); padding: 5px; display: none; }
+        #download-button { position: absolute; bottom: 70px; right: 10px; background-color: rgba(255, 255, 255, 0.8); padding: 5px; }
+        #info-button { position: absolute; bottom: 10px; right: 10px; background-color: rgba(255, 255, 255, 0.8); padding: 5px; }
+        #info-content { position: absolute; top: 10px; left: 10px; background-color: rgba(255, 255, 255, 0.8); padding: 10px; display: none; }
+    </style>
 </head>
 <body>
-    <div id="main" style="width: 800px; height: 600px;"></div>
-    <input type="text" id="searchInput" placeholder="请输入城市名称">
-    <script>
-        // 初始化echarts地图
-        var myChart = echarts.init(document.getElementById('main'));
 
-        // 异步加载CSV数据
-        $.get('data.csv', function (csvString) {
-            // 将CSV数据解析成数组
-            var data = parseCSV(csvString);
-            // 处理数据并渲染地图
-            renderMap(data);
+<div id="map"></div>
+<div id="search-box">
+    <input type="text" id="search-input" placeholder="请输入城市名称">
+    <button onclick="searchCity();">搜索</button>
+</div>
+<div id="legend">
+    <h3>总辐照量图例</h3>
+    <div style="background: linear-gradient(to right, green, yellow, orange, red); height: 20px;"></div>
+    <div>800 kWh/m² - 2500 kWh/m²</div>
+</div>
+<div id="back-button">
+    <button onclick="goBack();">返回</button>
+</div>
+<div id="download-button">
+    <button onclick="downloadCSV();">下载数据</button>
+</div>
+<div id="info-button">
+    <button onclick="toggleInfo();">说明</button>
+</div>
+<div id="info-content">
+    <h3>说明</h3>
+    <p>本地图结合目前的高效组件衰减（首年功率衰减≤2.0%、次年起每年衰减≤0.45%），solargis公开辐射数据以及高效系统效率82%，估算固定光伏支架最优倾角下的首年等效满负荷小时数。</p>
+</div>
+
+<script>
+    mapboxgl.accessToken = 'pk.eyJ1Ijoib2NlYW5saW5nIiwiYSI6ImNseWp5M2loZjBtYTgyaXI1aXQ1ZDI2djAifQ.7U0sX8PnyUjaFRvA9XaNTg';
+
+    var map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [104.195397, 35.86166], // 初始地图中心点
+        zoom: 3 // 初始缩放级别
+    });
+
+    var cityData = [
+        { city: '日喀则', total_radiation: 2413, utilization_hours: 1939, province: '西藏自治区', coordinates: [88.880423, 29.266838] },
+        { city: '阿里', total_radiation: 2405, utilization_hours: 1933, province: '西藏自治区', coordinates: [80.105786, 32.500987] },
+        { city: '拉萨', total_radiation: 2336, utilization_hours: 1877, province: '西藏自治区', coordinates: [91.171924, 29.653491] },
+        { city: '山南', total_radiation: 2237, utilization_hours: 1798, province: '西藏自治区', coordinates: [91.771426, 29.237722] },
+        { city: '共和县', total_radiation: 2146, utilization_hours: 1725, province: '青海省', coordinates: [100.619405, 36.284158] },
+        { city: '格尔木', total_radiation: 2146, utilization_hours: 1725, province: '青海省', coordinates: [94.928293, 36.407272] },
+        { city: '那曲', total_radiation: 2132, utilization_hours: 1713, province: '西藏自治区', coordinates: [92.05151, 31.477905] },
+        { city: '同仁', total_radiation: 2121, utilization_hours: 1704, province: '青海省', coordinates: [102.018663, 35.515769] },
+        { city: '恩施', total_radiation: 996, utilization_hours: 801, province: '湖北省', coordinates: [109.488076, 30.272104] },
+        { city: '资阳', total_radiation: 996, utilization_hours: 801, province: '四川省', coordinates: [104.627265, 30.129236] },
+        { city: '眉山', total_radiation: 993, utilization_hours: 798, province: '四川省', coordinates: [103.848417, 30.077113] },
+        { city: '宜宾', total_radiation: 975, utilization_hours: 783, province: '四川省', coordinates: [104.642826, 28.752354] },
+        { city: '自贡', total_radiation: 956, utilization_hours: 768, province: '四川省', coordinates: [104.779307, 29.33924] },
+        { city: '泸州', total_radiation: 949, utilization_hours: 763, province: '四川省', coordinates: [105.441866, 28.87098] },
+        { city: '内江', total_radiation: 945, utilization_hours: 760, province: '四川省', coordinates: [105.057992, 29.58021] }
+    ];
+
+    var provinces = {
+        '西藏自治区': { center: [91.132212, 29.660361], zoom: 5 },
+        '青海省': { center: [96.202544, 35.499761], zoom: 5 },
+        '湖北省': { center: [112.238401, 31.049156], zoom: 5 },
+        '四川省': { center: [102.89916, 30.367481], zoom: 5 }
+    };
+
+    var currentProvince = null;
+    var popup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false
+    });
+
+    // 添加总辐照量的图例
+    map.on('load', function () {
+        map.addSource('cities', {
+            'type': 'geojson',
+            'data': {
+                'type': 'FeatureCollection',
+                'features': cityData.map(function(city) {
+                    return {
+                        'type': 'Feature',
+                        'geometry': {
+                            'type': 'Point',
+                            'coordinates': city.coordinates
+                        },
+                        'properties': {
+                            'city': city.city,
+                            'total_radiation': city.total_radiation,
+                            'utilization_hours': city.utilization_hours
+                        }
+                    };
+                })
+            }
         });
 
-        // 解析CSV数据
-        function parseCSV(csvString) {
-            var lines = csvString.split('\n');
-            var headers = lines[0].split(',');
-            var result = [];
-            for (var i = 1; i < lines.length; i++) {
-                var obj = {};
-                var currentLine = lines[i].split(',');
-                for (var j = 0; j < headers.length; j++) {
-                    obj[headers[j].trim()] = currentLine[j].trim();
-                }
-                result.push(obj);
+        map.addLayer({
+            'id': 'cities-layer',
+            'type': 'circle',
+            'source': 'cities',
+            'paint': {
+                'circle-radius': 8,
+                'circle-color': [
+                    'interpolate',
+                    ['linear'],
+                    ['get', 'total_radiation'],
+                    800, 'green',
+                    2500, 'red'
+                ]
             }
-            return result;
-        }
+        });
 
-        // 渲染地图
-        function renderMap(data) {
-            // 假设已经获取到了每个城市的经纬度信息
-            var cityCoordinates = {
-                '日喀则': [88.886583, 29.267519],
-                // 其他城市的经纬度信息
-            };
+        map.addLayer({
+            'id': 'cities-labels',
+            'type': 'symbol',
+            'source': 'cities',
+            'layout': {
+                'text-field': ['get', 'city'],
+                'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+                'text-size': 12,
+                'text-offset': [0, 1]
+            },
+            'paint': {
+                'text-color': 'black'
+            }
+        });
 
-            // 在地图上标注城市
-            var option = {
-                tooltip: {
-                    trigger: 'item',
-                    formatter: function (params) {
-                        var cityInfo = data.find(item => item.city === params.name);
-                        return cityInfo ?
-                            `${params.name}<br/>总辐射量：${cityInfo.total_radiation} kWh/m²<br/>利用小时：${cityInfo.utilization_hours}` :
-                            `${params.name}<br/>暂无数据`;
-                    }
-                },
-                series: [{
-                    type: 'map',
-                    map: 'china',
-                    data: data.map(item => ({
-                        name: item.city,
-                        province: item.province
-                    })),
-                    emphasis: {
-                        label: {
-                            show: true
-                        }
-                    },
-                    markPoint: {
-                        symbolSize: 50,
-                        data: data.map(item => ({
-                            name: item.city,
-                            value: cityCoordinates[item.city].concat([item.city, item.total_radiation, item.utilization_hours])
-                        }))
-                    }
-                }]
-            };
+        // 鼠标移动到城市上显示信息
+        map.on('mousemove', 'cities-layer', function (e) {
+            var coordinates = e.features[0].geometry.coordinates.slice();
+            var city = e.features[0].properties.city;
+            var totalRadiation = e.features[0].properties.total_radiation;
+            var utilizationHours = e.features[0].properties.utilization_hours;
 
-            myChart.setOption(option);
+            popup.setLngLat(coordinates)
+                .setHTML('<h3>' + city + '</h3>' +
+                         '<p>总辐照量：' + totalRadiation + ' kWh/m²</p>' +
+                         '<p>利用小时：' + utilizationHours + '</p>')
+                .addTo(map);
+        });
 
-            // 模拟搜索功能
-            document.getElementById('searchInput').addEventListener('keydown', function(event) {
-                if (event.key === 'Enter') {
-                    var searchCity = this.value.trim();
-                    var foundCity = data.find(item => item.city.includes(searchCity));
-                    if (foundCity) {
-                        var coordinates = cityCoordinates[foundCity.city];
-                        myChart.dispatchAction({
-                            type: 'geoRoam',
-                            center: coordinates,
-                            zoom: 10
-                        });
-                    } else {
-                        myChart.dispatchAction({
-                            type: 'geoRoam',
-                            center: [104.195397, 35.86166], // 中国中心点
-                            zoom: 1
-                        });
-                    }
-                }
+        map.on('mouseleave', 'cities-layer', function () {
+            setTimeout(function() {
+                popup.remove();
+            }, 1500);
+        });
+    });
+
+    // 搜索城市
+    function searchCity() {
+        var cityName = document.getElementById('search-input').value.trim();
+        var city = cityData.find(function(c) {
+            return c.city === cityName;
+        });
+        if (city) {
+            map.flyTo({
+                center: city.coordinates,
+                zoom: 7
             });
+            currentProvince = null;
+            showBackButton();
+            showCityInfo(city.city, city.total_radiation, city.utilization_hours);
+        } else {
+            alert('未找到该城市，请输入有效的城市名称！');
         }
-    </script>
+    }
+
+    // 返回按钮
+    function goBack() {
+        map.flyTo({
+            center: [104.195397, 35.86166],
+            zoom: 3
+        });
+        hideBackButton();
+        currentProvince = null;
+        hideCityInfo();
+    }
+
+    // 下载数据为CSV文件
+    function downloadCSV() {
+        var csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "城市,总辐照量 kWh/m²,利用小时\n";
+        cityData.forEach(function(city) {
+            csvContent += city.city + "," + city.total_radiation + "," + city.utilization_hours + "\n";
+        });
+
+        var encodedUri = encodeURI(csvContent);
+        var link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "city_data.csv");
+        document.body.appendChild(link); // Required for FF
+
+        link.click(); // This will download the data file named "city_data.csv".
+    }
+
+    // 显示/隐藏说明信息
+    function toggleInfo() {
+        var infoContent = document.getElementById('info-content');
+        infoContent.style.display = infoContent.style.display === 'block' ? 'none' : 'block';
+    }
+
+    // 显示城市信息
+    function showCityInfo(city, totalRadiation, utilizationHours) {
+        var info = '<h3>' + city + '</h3>' +
+                   '<p>总辐照量：' + totalRadiation + ' kWh/m²</p>' +
+                   '<p>利用小时：' + utilizationHours + '</p>';
+        document.getElementById('city-info').innerHTML = info;
+    }
+
+    // 隐藏城市信息
+    function hideCityInfo() {
+        document.getElementById('city-info').innerHTML = '';
+    }
+
+    // 显示返回按钮
+    function showBackButton() {
+        document.getElementById('back-button').style.display = 'block';
+    }
+
+    // 隐藏返回按钮
+    function hideBackButton() {
+        document.getElementById('back-button').style.display = 'none';
+    }
+
+</script>
+
 </body>
 </html>
