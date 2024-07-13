@@ -3,154 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <title>Interactive Map</title>
-    <style>
-        #main {
-            width: 100%;
-            height: 600px;
-            margin: 0 auto;
-        }
-        #searchInput {
-            margin: 10px;
-            padding: 5px;
-        }
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <script src="https://cdn.staticfile.org/echarts/5.4.0/echarts.min.js"></script>
+    <script src="https://cdn.staticfile.org/jquery/3.6.0/jquery.min.js"></script>
 </head>
 <body>
-    <div id="main"></div>
-    <input type="text" id="searchInput" placeholder="输入城市名进行搜索">
+    <div id="main" style="width: 800px; height: 600px;"></div>
+    <input type="text" id="searchInput" placeholder="请输入城市名称">
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var chart = echarts.init(document.getElementById('main'));
+        // 初始化echarts地图
+        var myChart = echarts.init(document.getElementById('main'));
 
-            // Fetch data from CSV (you need to replace 'data.csv' with your actual CSV file path)
-            fetch('data.csv')
-                .then(response => response.text())
-                .then(data => {
-                    var lines = data.trim().split('\n');
-                    var headers = lines[0].split(',');
-                    var cityData = [];
-                    for (var i = 1; i < lines.length; i++) {
-                        var values = lines[i].split(',');
-                        var city = values[0];
-                        var totalRadiation = parseInt(values[1]);
-                        var utilizationHours = parseInt(values[2]);
-                        cityData.push({
-                            city: city,
-                            totalRadiation: totalRadiation,
-                            utilizationHours: utilizationHours
-                        });
+        // 异步加载CSV数据
+        $.get('data.csv', function (csvString) {
+            // 将CSV数据解析成数组
+            var data = parseCSV(csvString);
+            // 处理数据并渲染地图
+            renderMap(data);
+        });
+
+        // 解析CSV数据
+        function parseCSV(csvString) {
+            var lines = csvString.split('\n');
+            var headers = lines[0].split(',');
+            var result = [];
+            for (var i = 1; i < lines.length; i++) {
+                var obj = {};
+                var currentLine = lines[i].split(',');
+                for (var j = 0; j < headers.length; j++) {
+                    obj[headers[j].trim()] = currentLine[j].trim();
+                }
+                result.push(obj);
+            }
+            return result;
+        }
+
+        // 渲染地图
+        function renderMap(data) {
+            // 假设已经获取到了每个城市的经纬度信息
+            var cityCoordinates = {
+                '日喀则': [88.886583, 29.267519],
+                // 其他城市的经纬度信息
+            };
+
+            // 在地图上标注城市
+            var option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function (params) {
+                        var cityInfo = data.find(item => item.city === params.name);
+                        return cityInfo ?
+                            `${params.name}<br/>总辐射量：${cityInfo.total_radiation} kWh/m²<br/>利用小时：${cityInfo.utilization_hours}` :
+                            `${params.name}<br/>暂无数据`;
                     }
-                    
-                    drawMap(cityData);
-                })
-                .catch(error => console.error('Error fetching data:', error));
+                },
+                series: [{
+                    type: 'map',
+                    map: 'china',
+                    data: data.map(item => ({
+                        name: item.city,
+                        province: item.province
+                    })),
+                    emphasis: {
+                        label: {
+                            show: true
+                        }
+                    },
+                    markPoint: {
+                        symbolSize: 50,
+                        data: data.map(item => ({
+                            name: item.city,
+                            value: cityCoordinates[item.city].concat([item.city, item.total_radiation, item.utilization_hours])
+                        }))
+                    }
+                }]
+            };
 
-            var searchInput = document.getElementById('searchInput');
-            searchInput.addEventListener('input', function() {
-                var searchQuery = this.value.trim();
-                if (searchQuery === '') {
-                    resetMap();
-                } else {
-                    var matchedCity = findMatchingCity(searchQuery);
-                    if (matchedCity) {
-                        locateCity(matchedCity);
+            myChart.setOption(option);
+
+            // 模拟搜索功能
+            document.getElementById('searchInput').addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    var searchCity = this.value.trim();
+                    var foundCity = data.find(item => item.city.includes(searchCity));
+                    if (foundCity) {
+                        var coordinates = cityCoordinates[foundCity.city];
+                        myChart.dispatchAction({
+                            type: 'geoRoam',
+                            center: coordinates,
+                            zoom: 10
+                        });
                     } else {
-                        locateProvince(searchQuery);
+                        myChart.dispatchAction({
+                            type: 'geoRoam',
+                            center: [104.195397, 35.86166], // 中国中心点
+                            zoom: 1
+                        });
                     }
                 }
             });
-
-            function findMatchingCity(query) {
-                query = query.toLowerCase();
-                for (var i = 0; i < cityData.length; i++) {
-                    if (cityData[i].city.toLowerCase().includes(query)) {
-                        return cityData[i];
-                    }
-                }
-                return null;
-            }
-
-            function drawMap(cityData) {
-                var option = {
-                    series: [{
-                        type: 'scatter',
-                        coordinateSystem: 'geo',
-                        data: cityData.map(city => {
-                            return {
-                                name: city.city,
-                                value: [getRandomLongitude(), getRandomLatitude()], // Replace with actual coordinates
-                                totalRadiation: city.totalRadiation,
-                                utilizationHours: city.utilizationHours
-                            };
-                        }),
-                        symbolSize: 10,
-                        label: {
-                            show: true,
-                            formatter: '{b}'
-                        },
-                        itemStyle: {
-                            color: 'blue'
-                        }
-                    }],
-                    geo: {
-                        map: 'china',
-                        roam: true
-                    }
-                };
-                chart.setOption(option);
-
-                chart.on('click', function(params) {
-                    var cityInfo = params.data;
-                    if (cityInfo && cityInfo.name) {
-                        alert(`城市：${cityInfo.name}\n总辐射量：${cityInfo.totalRadiation} kWh/m²\n利用小时：${cityInfo.utilizationHours}`);
-                    }
-                });
-            }
-
-            function resetMap() {
-                var option = {
-                    series: [{
-                        data: []
-                    }]
-                };
-                chart.setOption(option);
-            }
-
-            function locateCity(city) {
-                // Implement city locating based on actual coordinates
-                // For demonstration purpose, use random coordinates
-                var coordinates = [getRandomLongitude(), getRandomLatitude()];
-                chart.setOption({
-                    geo: {
-                        center: coordinates,
-                        zoom: 5
-                    }
-                });
-            }
-
-            function locateProvince(province) {
-                // Implement province locating based on actual coordinates
-                // For demonstration purpose, use random coordinates
-                var coordinates = [getRandomLongitude(), getRandomLatitude()];
-                chart.setOption({
-                    geo: {
-                        center: coordinates,
-                        zoom: 4
-                    }
-                });
-            }
-
-            function getRandomLongitude() {
-                // Generate random longitude (for demo purpose)
-                return 100 + Math.random() * 30; // Replace with actual data
-            }
-
-            function getRandomLatitude() {
-                // Generate random latitude (for demo purpose)
-                return 20 + Math.random() * 20; // Replace with actual data
-            }
-        });
+        }
     </script>
 </body>
 </html>
