@@ -1,152 +1,155 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高德地图API和ECharts展示城市数据</title>
-    <script src="https://webapi.amap.com/maps?v=2.0&key=dd33acd236ff9c0b908f6cd46e9c4429"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <title>Interactive Map</title>
     <style>
-        #map { height: 500px; }
-        #chart { height: 400px; }
-        #search-container {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 1000;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        #main {
+            width: 100%;
+            height: 600px;
+            margin: 0 auto;
         }
-        #search-input {
-            width: 200px;
+        #searchInput {
+            margin: 10px;
             padding: 5px;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
 </head>
 <body>
-    <div id="search-container">
-        <input type="text" id="search-input" placeholder="输入城市名称">
-        <button onclick="searchCity()">搜索</button>
-    </div>
-    <div id="map"></div>
-    <div id="chart"></div>
-
+    <div id="main"></div>
+    <input type="text" id="searchInput" placeholder="输入城市名进行搜索">
     <script>
-        var map;
-        var cityData = {};
+        document.addEventListener('DOMContentLoaded', function() {
+            var chart = echarts.init(document.getElementById('main'));
 
-        // 初始化地图
-        function initMap() {
-            map = new AMap.Map('map', {
-                center: [104.1954, 35.8617], // 设置地图中心点为中国
-                zoom: 4 // 初始缩放级别
-            });
-
-            // 异步加载城市数据
+            // Fetch data from CSV (you need to replace 'data.csv' with your actual CSV file path)
             fetch('data.csv')
                 .then(response => response.text())
                 .then(data => {
-                    processData(data); // 处理读取到的数据
+                    var lines = data.trim().split('\n');
+                    var headers = lines[0].split(',');
+                    var cityData = [];
+                    for (var i = 1; i < lines.length; i++) {
+                        var values = lines[i].split(',');
+                        var city = values[0];
+                        var totalRadiation = parseInt(values[1]);
+                        var utilizationHours = parseInt(values[2]);
+                        cityData.push({
+                            city: city,
+                            totalRadiation: totalRadiation,
+                            utilizationHours: utilizationHours
+                        });
+                    }
+                    
+                    drawMap(cityData);
                 })
-                .catch(error => console.error('加载CSV数据时出错:', error));
-        }
+                .catch(error => console.error('Error fetching data:', error));
 
-        // 处理城市数据
-        function processData(data) {
-            var lines = data.trim().split('\n');
-            var headers = lines[0].split(',');
-            for (var i = 1; i < lines.length; i++) {
-                var values = lines[i].split(',');
-                var city = values[0];
-                var totalRadiation = parseFloat(values[1]);
-                var utilizationHours = parseFloat(values[2]);
-                cityData[city] = { "totalRadiation": totalRadiation, "utilizationHours": utilizationHours };
+            var searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', function() {
+                var searchQuery = this.value.trim();
+                if (searchQuery === '') {
+                    resetMap();
+                } else {
+                    var matchedCity = findMatchingCity(searchQuery);
+                    if (matchedCity) {
+                        locateCity(matchedCity);
+                    } else {
+                        locateProvince(searchQuery);
+                    }
+                }
+            });
+
+            function findMatchingCity(query) {
+                query = query.toLowerCase();
+                for (var i = 0; i < cityData.length; i++) {
+                    if (cityData[i].city.toLowerCase().includes(query)) {
+                        return cityData[i];
+                    }
+                }
+                return null;
             }
 
-            // 在地图上标记城市并绑定数据
-            for (var city in cityData) {
-                (function(city) {
-                    getCityCoords(city, function(coords) {
-                        if (coords) {
-                            var marker = new AMap.Marker({
-                                position: coords,
-                                map: map
-                            });
-                            var infoWindow = new AMap.InfoWindow({
-                                content: `<b>${city}</b><br>总辐射量: ${cityData[city].totalRadiation.toFixed(2)} kWh/m²<br>利用小时: ${cityData[city].utilizationHours.toFixed(2)}`
-                            });
-                            marker.on('click', function() {
-                                infoWindow.open(map, marker.getPosition());
-                                showChart(city);
-                            });
-                        } else {
-                            console.warn('无法获取有效的坐标信息:', city);
+            function drawMap(cityData) {
+                var option = {
+                    series: [{
+                        type: 'scatter',
+                        coordinateSystem: 'geo',
+                        data: cityData.map(city => {
+                            return {
+                                name: city.city,
+                                value: [getRandomLongitude(), getRandomLatitude()], // Replace with actual coordinates
+                                totalRadiation: city.totalRadiation,
+                                utilizationHours: city.utilizationHours
+                            };
+                        }),
+                        symbolSize: 10,
+                        label: {
+                            show: true,
+                            formatter: '{b}'
+                        },
+                        itemStyle: {
+                            color: 'blue'
                         }
-                    });
-                })(city);
-            }
-        }
-
-        // 获取城市坐标
-        function getCityCoords(city, callback) {
-            var url = `https://restapi.amap.com/v3/geocode/geo?address=${city}&key=你的新高德API密钥`;
-            fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === '1' && data.geocodes.length > 0) {
-                        var location = data.geocodes[0].location.split(',');
-                        var coords = [parseFloat(location[0]), parseFloat(location[1])];
-                        callback(coords);
-                    } else {
-                        console.warn('获取城市坐标失败:', city);
-                        callback(null);
+                    }],
+                    geo: {
+                        map: 'china',
+                        roam: true
                     }
-                })
-                .catch(error => {
-                    console.error('获取城市坐标时出错:', error);
-                    callback(null);
-                });
-        }
+                };
+                chart.setOption(option);
 
-        // 使用ECharts展示城市数据的图表
-        function showChart(city) {
-            var data = cityData[city];
-            var chart = echarts.init(document.getElementById('chart'));
-            var option = {
-                title: { text: `城市: ${city}` },
-                tooltip: {},
-                xAxis: { data: ['总辐射量', '利用小时'] },
-                yAxis: {},
-                series: [{
-                    type: 'bar',
-                    data: [data.totalRadiation, data.utilizationHours]
-                }]
-            };
-            chart.setOption(option);
-        }
-
-        // 搜索城市
-        function searchCity() {
-            var city = document.getElementById('search-input').value.trim();
-            if (city in cityData) {
-                getCityCoords(city, function(coords) {
-                    if (coords) {
-                        map.setZoomAndCenter(10, coords);
-                        showChart(city);
-                    } else {
-                        console.warn('无法获取有效的坐标信息:', city);
+                chart.on('click', function(params) {
+                    var cityInfo = params.data;
+                    if (cityInfo && cityInfo.name) {
+                        alert(`城市：${cityInfo.name}\n总辐射量：${cityInfo.totalRadiation} kWh/m²\n利用小时：${cityInfo.utilizationHours}`);
                     }
                 });
-            } else {
-                console.warn('城市不在数据中:', city);
             }
-        }
 
-        // 页面加载完成后初始化地图
-        document.addEventListener('DOMContentLoaded', function() {
-            initMap();
+            function resetMap() {
+                var option = {
+                    series: [{
+                        data: []
+                    }]
+                };
+                chart.setOption(option);
+            }
+
+            function locateCity(city) {
+                // Implement city locating based on actual coordinates
+                // For demonstration purpose, use random coordinates
+                var coordinates = [getRandomLongitude(), getRandomLatitude()];
+                chart.setOption({
+                    geo: {
+                        center: coordinates,
+                        zoom: 5
+                    }
+                });
+            }
+
+            function locateProvince(province) {
+                // Implement province locating based on actual coordinates
+                // For demonstration purpose, use random coordinates
+                var coordinates = [getRandomLongitude(), getRandomLatitude()];
+                chart.setOption({
+                    geo: {
+                        center: coordinates,
+                        zoom: 4
+                    }
+                });
+            }
+
+            function getRandomLongitude() {
+                // Generate random longitude (for demo purpose)
+                return 100 + Math.random() * 30; // Replace with actual data
+            }
+
+            function getRandomLatitude() {
+                // Generate random latitude (for demo purpose)
+                return 20 + Math.random() * 20; // Replace with actual data
+            }
         });
     </script>
 </body>
