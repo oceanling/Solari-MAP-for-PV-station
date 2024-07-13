@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>solarmap for pvstation</title>
+    <title>交互地图</title>
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css" rel="stylesheet">
     <style>
@@ -118,28 +118,17 @@
                     ['linear'],
                     ['get', 'total_radiation'],
                     800, 'green',
-                    2500, 'red'
-                ]
+                    1200, 'yellow',
+                    1600, 'orange',
+                    2000, 'red'
+                ],
+                'circle-opacity': 0.8
             }
         });
 
-        map.addLayer({
-            'id': 'cities-labels',
-            'type': 'symbol',
-            'source': 'cities',
-            'layout': {
-                'text-field': ['get', 'city'],
-                'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-                'text-size': 12,
-                'text-offset': [0, 1]
-            },
-            'paint': {
-                'text-color': 'black'
-            }
-        });
-
-        // 鼠标移动到城市上显示信息
-        map.on('mousemove', 'cities-layer', function (e) {
+        // 添加鼠标悬停效果
+        map.on('mouseenter', 'cities-layer', function (e) {
+            map.getCanvas().style.cursor = 'pointer';
             var coordinates = e.features[0].geometry.coordinates.slice();
             var city = e.features[0].properties.city;
             var totalRadiation = e.features[0].properties.total_radiation;
@@ -153,6 +142,7 @@
         });
 
         map.on('mouseleave', 'cities-layer', function () {
+            map.getCanvas().style.cursor = '';
             setTimeout(function() {
                 popup.remove();
             }, 1500);
@@ -192,6 +182,7 @@
     // 下载数据为CSV文件
     function downloadCSV() {
         var csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "\uFEFF"; // 添加BOM头，确保Excel中文显示正确
         csvContent += "城市,总辐照量 kWh/m²,利用小时\n";
         cityData.forEach(function(city) {
             csvContent += city.city + "," + city.total_radiation + "," + city.utilization_hours + "\n";
